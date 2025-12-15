@@ -3,6 +3,8 @@ import re
 import pdfplumber
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from fpdf import FPDF
+import base64
 
 # ---------- Utility Functions ----------
 
@@ -25,7 +27,7 @@ def extract_text_from_pdf(uploaded_file):
 def extract_skills(text, skill_list):
     found = []
     for skill in skill_list:
-        pattern = r'\b' + re.escape(skill) + r'\b'
+        pattern = r'\\b' + re.escape(skill) + r'\\b'
         if re.search(pattern, text):
             found.append(skill)
     return sorted(set(found))
@@ -35,6 +37,29 @@ def calculate_match(resume, job):
     vectors = tfidf.fit_transform([resume, job])
     score = cosine_similarity(vectors[0:1], vectors[1:2])[0][0]
     return round(score * 100, 2)
+
+def create_pdf_report(name, match_score, found_skills, missing_skills):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=16)
+    pdf.cell(200, 10, txt="AI Resume Analysis Report", ln=True, align="C")
+
+    pdf.set_font("Arial", size=12)
+    pdf.ln(10)
+    pdf.cell(200, 10, txt=f"Candidate: {name}", ln=True)
+    pdf.cell(200, 10, txt=f"Match Score: {match_score}%", ln=True)
+
+    pdf.ln(5)
+    pdf.cell(200, 10, txt="Skills Found:", ln=True)
+    pdf.multi_cell(0, 10, txt=", ".join(found_skills) if found_skills else "None")
+
+    pdf.ln(5)
+    pdf.cell(200, 10, txt="Missing Skills:", ln=True)
+    pdf.multi_cell(0, 10, txt=", ".join(missing_skills) if missing_skills else "None")
+
+    filename = "resume_analysis_report.pdf"
+    pdf.output(filename)
+    return filename
 
 # ---------- Skill Database ----------
 skills = [
@@ -77,5 +102,20 @@ if st.button("Analyze Resume"):
             st.warning("Moderate Match – Upskill recommended")
         else:
             st.error("Weak Match – Resume improvement needed")
+
+        st.markdown("---")
+        st.subheader("Download Report")
+        candidate_name = st.text_input("Enter Candidate Name for Report", "")
+        
+        if candidate_name:
+            pdf_file_path = create_pdf_report(candidate_name, match_score, resume_skills, missing_skills)
+            with open(pdf_file_path, "rb") as f:
+                pdf_bytes = f.read()
+                b64 = base64.b64encode(pdf_bytes).decode()
+                href = f'<a href="data:file/pdf;base64,{b64}" download="{pdf_file_path}">📥 Download PDF Report</a>'
+                st.markdown(href, unsafe_allow_html=True)
+        else:
+            st.info("Please enter candidate name to enable PDF report download.")
+
     else:
         st.warning("Please upload resume and paste job description")
